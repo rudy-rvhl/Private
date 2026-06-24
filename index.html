@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tuscany Estates — 3D Property Explorer</title>
+  <meta name="description" content="Interactive 3D terrain map of Tuscany with properties for sale, real elevation, landscape views and filters." />
+
+  <!-- MapLibre GL JS (open source, no API key) -->
+  <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ===================== SIDEBAR / FILTERS ===================== -->
+    <aside id="sidebar">
+      <div class="brand">
+        <h1>🍇 Tuscany Estates</h1>
+        <p>3D property explorer · landscape &amp; views · live filters</p>
+      </div>
+
+      <div class="sidebar-scroll">
+        <div class="filter-group">
+          <input id="search" class="search-box" type="text" placeholder="Search town, area or name…" />
+        </div>
+
+        <div class="result-count">
+          Showing <b id="count-shown">0</b> of <b id="count-total">0</b> properties
+        </div>
+
+        <div class="filter-group">
+          <label class="group-title">Property type</label>
+          <div id="type-chips" class="chips"><!-- chips injected --></div>
+        </div>
+
+        <div class="filter-group">
+          <label class="group-title">Features</label>
+          <div class="toggles">
+            <label class="toggle"><input type="checkbox" id="feat-vineyard" /> 🍇 Has a vineyard</label>
+            <label class="toggle"><input type="checkbox" id="feat-olive" /> 🫒 Has an olive grove</label>
+            <label class="toggle"><input type="checkbox" id="feat-pool" /> 🏊 Has a swimming pool</label>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <label class="group-title">Minimum land size</label>
+          <div class="range-row"><span>From</span><span class="range-val" id="land-val">0 ha</span></div>
+          <input type="range" id="land-slider" min="0" max="60" step="1" value="0" />
+        </div>
+
+        <div class="filter-group">
+          <label class="group-title">Maximum price</label>
+          <div class="range-row"><span>Up to</span><span class="range-val" id="price-val">Any</span></div>
+          <input type="range" id="price-slider" min="0" max="9000000" step="50000" value="9000000" />
+        </div>
+
+        <div class="filter-group">
+          <label class="group-title">Bedrooms</label>
+          <select id="beds-select" class="select">
+            <option value="0">Any number of bedrooms</option>
+            <option value="1">1+ bedrooms</option>
+            <option value="2">2+ bedrooms</option>
+            <option value="3">3+ bedrooms</option>
+            <option value="4">4+ bedrooms</option>
+            <option value="5">5+ bedrooms</option>
+            <option value="6">6+ bedrooms</option>
+            <option value="8">8+ bedrooms</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <button id="reset-btn" class="btn block">↺ Reset all filters</button>
+        </div>
+
+        <div class="filter-group">
+          <label class="group-title">Properties</label>
+          <div id="plist" class="plist"><!-- list injected --></div>
+        </div>
+
+        <div class="filter-group">
+          <div class="note">
+            <b>Sample data.</b> These are representative listings at real Tuscan
+            locations so the terrain and views are accurate. Listing links open
+            current for-sale inventory for the property's province. Replace the
+            array in <code>js/data.js</code> with a live feed to go production —
+            see the README.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===================== MAP ===================== -->
+    <main id="map">
+      <button id="sb-toggle" class="btn map-ctrl" style="position:absolute;padding:9px 12px;">☰ Filters</button>
+
+      <!-- base layer switch -->
+      <div id="layer-ctrl" class="map-ctrl">
+        <button data-layer="satellite" class="active">Satellite</button>
+        <button data-layer="topo">Topographic</button>
+        <button data-layer="osm">Streets</button>
+      </div>
+
+      <!-- 3D / relief controls -->
+      <div id="view-ctrl" class="map-ctrl">
+        <div class="ctrl-title">Landscape &amp; relief</div>
+        <label class="toggle"><input type="checkbox" id="terrain-toggle" checked /> 3D terrain</label>
+        <label class="toggle"><input type="checkbox" id="relief-toggle" /> Relief shading</label>
+        <div class="ctrl-row"><span>Relief exaggeration</span><span class="range-val" id="exag-val">1.5×</span></div>
+        <input type="range" id="exag-slider" min="1" max="3" step="0.1" value="1.5" />
+        <button id="reset-view" class="btn block" style="margin-top:8px;">⤢ Reset view</button>
+        <div class="small" style="margin-top:6px;">Drag with right button (or Ctrl+drag) to tilt &amp; rotate.</div>
+      </div>
+
+      <!-- legend -->
+      <div id="legend">
+        <div class="lg-title">Property types</div>
+        <div id="legend-items"></div>
+      </div>
+
+      <div id="toast"></div>
+      <div id="loading"><div class="spin"></div></div>
+    </main>
+  </div>
+
+  <!-- data first, then app -->
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
