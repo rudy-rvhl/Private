@@ -109,7 +109,22 @@
         <label class="toggle"><input type="checkbox" id="relief-toggle" /> Relief shading</label>
         <div class="ctrl-row"><span>Relief exaggeration</span><span class="range-val" id="exag-val">1.5×</span></div>
         <input type="range" id="exag-slider" min="1" max="3" step="0.1" value="1.5" />
-        <button id="reset-view" class="btn block" style="margin-top:8px;">⤢ Reset view</button>
+
+        <hr class="ctrl-sep" />
+        <label class="toggle"><input type="checkbox" id="sun-toggle" /> ☀️ Sun &amp; shadows</label>
+        <div class="ctrl-row"><span>Time of day</span><span class="range-val" id="sun-readout">13:00</span></div>
+        <input type="range" id="sun-slider" class="sun-range" min="0" max="24" step="0.25" value="13" />
+        <div class="ctrl-row" style="margin-top:4px;">
+          <span>Season</span>
+          <select id="season-select" class="select select-sm">
+            <option value="2026-03-20">Spring</option>
+            <option value="2026-06-21" selected>Summer</option>
+            <option value="2026-09-22">Autumn</option>
+            <option value="2026-12-21">Winter</option>
+          </select>
+        </div>
+
+        <button id="reset-view" class="btn block" style="margin-top:10px;">⤢ Reset view</button>
         <div class="small" style="margin-top:6px;">Drag with right button (or Ctrl+drag) to tilt &amp; rotate.</div>
       </div>
 

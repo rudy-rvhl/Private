@@ -106,6 +106,11 @@ const state = {
     minBeds: 0,
     maxPrice: Infinity,
   },
+  sun: {
+    enabled: false,
+    hours: 13,                       // time of day (0–24)
+    date: new Date('2026-06-21'),    // season (drives the sun's height)
+  },
 };
 
 /* ---- Helpers ---- */
@@ -123,6 +128,61 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+}
+function fmtHour(h) {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60);
+  return String(hh).padStart(2, '0') + ':' + String(mm % 60).padStart(2, '0');
+}
+
+/* ---- Solar position (NOAA-style approximation) ----
+   Returns the sun's altitude (degrees above horizon) and azimuth
+   (degrees clockwise from north) for a date/time at a location.       */
+function sunPosition(date, lat, lng, hours, tzOffset) {
+  const rad = Math.PI / 180;
+  const yearStart = Date.UTC(date.getUTCFullYear(), 0, 0);
+  const dayMs = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) - yearStart;
+  const N = Math.floor(dayMs / 86400000);                       // day of year
+  const decl = 23.45 * Math.sin(rad * 360 * (284 + N) / 365);   // declination
+  const B = rad * 360 * (N - 81) / 364;
+  const EoT = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B); // minutes
+  const LSTM = 15 * tzOffset;                                   // local std time meridian
+  const TC = 4 * (lng - LSTM) + EoT;                            // time correction (min)
+  const LST = hours + TC / 60;                                  // local solar time
+  const HRA = 15 * (LST - 12);                                  // hour angle (deg)
+  const alt = Math.asin(
+    Math.sin(lat * rad) * Math.sin(decl * rad) +
+    Math.cos(lat * rad) * Math.cos(decl * rad) * Math.cos(HRA * rad)
+  ) / rad;
+  let cosAz = (Math.sin(decl * rad) - Math.sin(alt * rad) * Math.sin(lat * rad)) /
+              (Math.cos(alt * rad) * Math.cos(lat * rad));
+  cosAz = Math.max(-1, Math.min(1, cosAz));
+  let az = Math.acos(cosAz) / rad;
+  if (HRA > 0) az = 360 - az;                                   // afternoon -> west
+  return { altitude: alt, azimuth: az, declination: decl };
+}
+
+// Sun for the Tuscany region at the current slider time/season.
+function currentSun() {
+  const d = state.sun.date;
+  const tz = (d.getUTCMonth() >= 2 && d.getUTCMonth() <= 9) ? 2 : 1; // CEST / CET
+  return sunPosition(d, 43.3, 11.3, state.sun.hours, tz);
+}
+
+// How strongly the sun lights a slope facing `aspectDeg` (its panorama side).
+// >0.15 sunlit, <=0.15 shaded, <0 (altitude<=0) night.
+function illumFactor(aspectDeg, sun) {
+  if (sun.altitude <= 0) return -1;
+  const rad = Math.PI / 180;
+  const slope = 20 * rad; // representative Tuscan hillside
+  return Math.sin(sun.altitude * rad) * Math.cos(slope) +
+         Math.cos(sun.altitude * rad) * Math.sin(slope) * Math.cos((sun.azimuth - aspectDeg) * rad);
+}
+function sunStatus(f, sun) {
+  if (sun.altitude <= 0) return { emoji: '🌙', text: 'In darkness (sun below horizon)' };
+  if (f > 0.5)  return { emoji: '☀️', text: 'In full sun' };
+  if (f > 0.15) return { emoji: '⛅', text: 'Partly sunlit' };
+  return { emoji: '🌑', text: 'In shade' };
 }
 
 /* ---- Filtering ---- */
@@ -160,7 +220,8 @@ function makeMarkerEl(p) {
   el.dataset.id = p.id;
   el.innerHTML =
     `<div class="marker-price">${shortPrice(p.price)}</div>` +
-    `<div class="marker-pin"><span>${meta.emoji}</span></div>`;
+    `<div class="marker-pin"><span>${meta.emoji}</span></div>` +
+    `<div class="sun-badge"></div>`;
   el.addEventListener('click', (e) => {
     e.stopPropagation();
     selectProperty(p.id, { fly: true });
@@ -175,13 +236,80 @@ function renderMarkers(list) {
     const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([p.lng, p.lat])
       .addTo(map);
-    state.markers.push({ id: p.id, marker, el });
+    state.markers.push({ id: p.id, marker, el, aspect: p.viewBearing });
   });
   // keep selection highlight if still visible
   if (state.selectedId) {
     const found = state.markers.find((m) => m.id === state.selectedId);
     if (found) found.el.classList.add('selected');
   }
+  updateSunOnMarkers();
+}
+
+/* ---- Sun / time-of-day lighting ---- */
+function updateSunOnMarkers(sun) {
+  sun = sun || currentSun();
+  state.markers.forEach((m) => {
+    m.el.classList.remove('sunlit', 'shaded', 'night');
+    const badge = m.el.querySelector('.sun-badge');
+    if (!state.sun.enabled) { if (badge) badge.textContent = ''; return; }
+    const f = illumFactor(m.aspect, sun);
+    let cls;
+    if (sun.altitude <= 0) cls = 'night';
+    else if (f > 0.15) cls = 'sunlit';
+    else cls = 'shaded';
+    m.el.classList.add(cls);
+    if (badge) badge.textContent = sunStatus(f, sun).emoji;
+  });
+}
+
+function updateSky(sun) {
+  try {
+    let sky = '#9ec9f0', horizon = '#f3ede0', fog = '#dfe7ef';
+    if (sun.altitude <= 0)      { sky = '#0b1d3a'; horizon = '#27354f'; fog = '#1b2436'; } // night
+    else if (sun.altitude < 12) { sky = '#7fb0e0'; horizon = '#ffcf99'; fog = '#efd7bf'; } // golden hour
+    map.setSky({
+      'sky-color': sky, 'sky-horizon-blend': 0.5,
+      'horizon-color': horizon, 'horizon-fog-blend': 0.6,
+      'fog-color': fog, 'fog-ground-blend': 0.5,
+    });
+  } catch (e) { /* sky API varies by version */ }
+}
+function restoreSky() {
+  try {
+    map.setSky({
+      'sky-color': '#9ec9f0', 'sky-horizon-blend': 0.5,
+      'horizon-color': '#f3ede0', 'horizon-fog-blend': 0.6,
+      'fog-color': '#dfe7ef', 'fog-ground-blend': 0.5,
+    });
+  } catch (e) { /* ignore */ }
+}
+
+// Recompute everything that depends on the sun slider.
+function applySun() {
+  const sun = currentSun();
+
+  // readout (always)
+  const r = document.getElementById('sun-readout');
+  if (r) {
+    r.textContent = sun.altitude <= 0
+      ? `${fmtHour(state.sun.hours)} · night`
+      : `${fmtHour(state.sun.hours)} · ${bearingToCompass(sun.azimuth)} ${Math.round(sun.altitude)}°`;
+  }
+
+  // map lighting (only when the sun study is enabled)
+  if (state.sun.enabled) {
+    map.setLayoutProperty('hillshade', 'visibility', 'visible');
+    map.setPaintProperty('hillshade', 'hillshade-illumination-anchor', 'map');
+    map.setPaintProperty('hillshade', 'hillshade-illumination-direction',
+      Math.round(sun.altitude > 0 ? sun.azimuth : 315));
+    // lower sun -> longer, stronger shadows
+    const ex = sun.altitude > 0 ? Math.min(0.95, 0.3 + (1 - sun.altitude / 90) * 0.65) : 0.12;
+    map.setPaintProperty('hillshade', 'hillshade-exaggeration', ex);
+    updateSky(sun);
+  }
+
+  updateSunOnMarkers(sun);
 }
 
 /* ---- Popup ---- */
@@ -203,6 +331,16 @@ function buildPopupHTML(p) {
     `<span class="feat ${p.pool ? 'on' : ''}">${p.pool ? '🏊 Pool' : '🏊 No pool'}</span>`,
   ].join('');
 
+  let sunLine = '';
+  if (state.sun.enabled) {
+    const sun = currentSun();
+    const st = sunStatus(illumFactor(p.viewBearing, sun), sun);
+    const where = sun.altitude > 0
+      ? `sun ${bearingToCompass(sun.azimuth)} ${Math.round(sun.altitude)}° high`
+      : 'sun is down';
+    sunLine = `<div class="pop-view pop-sun">${st.emoji} <b>At ${fmtHour(state.sun.hours)}:</b> ${st.text} — ${where}.</div>`;
+  }
+
   return `
     <div class="pop" style="--c:${meta.color}">
       <div class="pop-head">
@@ -214,6 +352,7 @@ function buildPopupHTML(p) {
         <div class="pop-grid">${grid}</div>
         <div class="pop-feats">${feats}</div>
         <div class="pop-view">🔭 <b>View ${bearingToCompass(p.viewBearing)}:</b> ${escapeHtml(p.viewDesc)}</div>
+        ${sunLine}
         <div class="pop-actions">
           <button class="view-btn" onclick="window.seeView('${p.id}')">🔭 See the view</button>
           <a class="listing-btn" href="${escapeHtml(p.listingUrl)}" target="_blank" rel="noopener">View listing ↗</a>
@@ -448,6 +587,35 @@ function buildMapControls() {
     if (terr.checked) map.setTerrain({ source: 'terrain', exaggeration: +exag.value });
   });
 
+  // sun / time-of-day study
+  const sunToggle = document.getElementById('sun-toggle');
+  const sunSlider = document.getElementById('sun-slider');
+  const seasonSel = document.getElementById('season-select');
+  sunToggle.addEventListener('change', () => {
+    state.sun.enabled = sunToggle.checked;
+    if (state.sun.enabled) {
+      applySun();
+      toast('☀️ Sun study on — drag the time slider to move the sun across the day.');
+    } else {
+      // restore default hillshade + sky
+      map.setPaintProperty('hillshade', 'hillshade-illumination-direction', 335);
+      map.setPaintProperty('hillshade', 'hillshade-illumination-anchor', 'viewport');
+      map.setPaintProperty('hillshade', 'hillshade-exaggeration', 0.45);
+      map.setLayoutProperty('hillshade', 'visibility',
+        document.getElementById('relief-toggle').checked ? 'visible' : 'none');
+      restoreSky();
+      updateSunOnMarkers();
+    }
+  });
+  sunSlider.addEventListener('input', () => {
+    state.sun.hours = +sunSlider.value;
+    applySun();
+  });
+  seasonSel.addEventListener('change', () => {
+    state.sun.date = new Date(seasonSel.value);
+    applySun();
+  });
+
   // reset view
   document.getElementById('reset-view').addEventListener('click', () => {
     map.flyTo({ center: [11.5, 43.25], zoom: 8.3, pitch: 62, bearing: -18, duration: 1500 });
@@ -468,6 +636,7 @@ map.on('load', () => {
   buildSidebar();
   buildMapControls();
   apply();
+  applySun(); // initialise the time-of-day readout
 
   // hide loader once first tiles are in
   map.once('idle', () => {

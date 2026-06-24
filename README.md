@@ -24,6 +24,13 @@ No build step, no API keys, no server required — **just open `index.html`.**
   direction — so you literally see the landscape and outlook that property has.
 - **The listing link.** Each pop-up has a *View listing ↗* button that opens the
   property's listing in a new tab.
+- **☀️ Sun & shadows.** Enable the *Sun & shadows* study and drag the **time‑of‑day
+  slider** to move the sun across the sky. The terrain's shaded relief is lit from
+  the sun's real azimuth/altitude for the chosen hour, and every property pin is
+  flagged **☀️ in sun / ⛅ partly / 🌑 in shade / 🌙 night** based on which way its
+  hillside faces — so you can see, e.g., which estates keep the evening sun on the
+  terrace. A *Season* selector changes the sun's path (summer rides high, winter
+  stays low). The pop-up also reports each property's sun status at that hour.
 - **Live filters** in the left sidebar:
   - Property **type** (Villa, Farmhouse/Casale, Estate/Tenuta, Castle, Apartment, Rustico, Land)
   - **Vineyard**, **olive grove**, **swimming pool**
@@ -62,6 +69,7 @@ python3 -m http.server 8000
 | **Tilt & rotate (3D)** | right-button drag, or `Ctrl`/`⌘` + drag, or the compass |
 | See a property's view | click a pin → **🔭 See the view** |
 | Open the listing | click a pin → **View listing ↗** |
+| Move the sun by hour | enable **☀️ Sun & shadows**, drag the time slider |
 | Toggle 3D / relief / exaggeration | top-right panel |
 | Reset camera | **⤢ Reset view** |
 
