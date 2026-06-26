@@ -79,9 +79,9 @@ const STYLE = {
 const map = new maplibregl.Map({
   container: 'map',
   style: STYLE,
-  center: [11.5, 43.25],
-  zoom: 8.3,
-  pitch: 62,
+  center: [11.5, 43.3],
+  zoom: 8.5,
+  pitch: 56,
   bearing: -18,
   maxPitch: 85,
   hash: false,
@@ -206,6 +206,37 @@ function getFiltered() {
   return window.PROPERTIES.filter(passesFilters);
 }
 
+/* ---- 3D property beacons (fill-extrusion that sits on the terrain) ---- */
+function squarePolygon(lng, lat, sizeM) {
+  const dLat = sizeM / 111320;
+  const dLng = sizeM / (111320 * Math.cos(lat * Math.PI / 180));
+  return [[
+    [lng - dLng, lat - dLat], [lng + dLng, lat - dLat],
+    [lng + dLng, lat + dLat], [lng - dLng, lat + dLat], [lng - dLng, lat - dLat],
+  ]];
+}
+function beaconHeight(p) {
+  const maxP = state.maxPrice || 8500000;
+  return Math.round(130 + (p.price / maxP) * 200); // 130–330 m — a clear 3D presence
+}
+function propsToGeoJSON(list) {
+  return {
+    type: 'FeatureCollection',
+    features: list.map((p) => ({
+      type: 'Feature',
+      properties: {
+        id: p.id, color: TYPE_META[p.type].color,
+        height: beaconHeight(p), selected: p.id === state.selectedId ? 1 : 0,
+      },
+      geometry: { type: 'Polygon', coordinates: squarePolygon(p.lng, p.lat, 24) },
+    })),
+  };
+}
+function updateBeacons(list) {
+  const src = map.getSource && map.getSource('properties-3d');
+  if (src && src.setData) src.setData(propsToGeoJSON(list || getFiltered()));
+}
+
 /* ---- Markers ---- */
 function clearMarkers() {
   state.markers.forEach((m) => m.marker.remove());
@@ -233,7 +264,9 @@ function renderMarkers(list) {
   clearMarkers();
   list.forEach((p) => {
     const el = makeMarkerEl(p);
-    const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+    // occludedOpacity:1 keeps pins fully visible even when behind a hill,
+    // so every property stays readable on the 3D terrain.
+    const marker = new maplibregl.Marker({ element: el, anchor: 'bottom', occludedOpacity: 1 })
       .setLngLat([p.lng, p.lat])
       .addTo(map);
     state.markers.push({ id: p.id, marker, el, aspect: p.viewBearing });
@@ -363,7 +396,9 @@ function buildPopupHTML(p) {
 
 function openPopup(p) {
   if (state.popup) state.popup.remove();
-  state.popup = new maplibregl.Popup({ offset: 34, closeButton: true, maxWidth: '320px' })
+  // no fixed anchor -> MapLibre auto-flips it to stay on-screen; CSS caps the
+  // body height so a tall card can never run off the bottom of the map.
+  state.popup = new maplibregl.Popup({ offset: 18, closeButton: true, maxWidth: '300px' })
     .setLngLat([p.lng, p.lat])
     .setHTML(buildPopupHTML(p))
     .addTo(map);
@@ -374,6 +409,7 @@ function openPopup(p) {
 function highlight(id) {
   state.markers.forEach((m) => m.el.classList.toggle('selected', m.id === id));
   state.selectedId = id;
+  updateBeacons(); // recolour the selected 3D beacon
 }
 
 function selectProperty(id, { fly = false } = {}) {
@@ -384,8 +420,11 @@ function selectProperty(id, { fly = false } = {}) {
     map.flyTo({
       center: [p.lng, p.lat],
       zoom: 13.4,
-      pitch: 66,
+      pitch: 62,
       bearing: p.viewBearing - 180, // look from behind toward the view direction
+      // push the point into the lower-centre so the pop-up opens upward into
+      // free space instead of being clipped at the bottom edge.
+      offset: [0, 110],
       duration: 1800,
       essential: true,
     });
@@ -458,6 +497,7 @@ function apply() {
   const list = getFiltered();
   renderMarkers(list);
   renderList(list);
+  updateBeacons(list);
 }
 
 /* ---- Toast ---- */
@@ -492,6 +532,7 @@ function buildSidebar() {
   // dynamic bounds from data
   const maxLand = Math.ceil(Math.max(...window.PROPERTIES.map((p) => p.landHa)));
   const maxPrice = Math.max(...window.PROPERTIES.map((p) => p.price));
+  state.maxPrice = maxPrice; // used for 3D beacon heights
 
   const landSlider = document.getElementById('land-slider');
   landSlider.max = maxLand;
@@ -618,7 +659,7 @@ function buildMapControls() {
 
   // reset view
   document.getElementById('reset-view').addEventListener('click', () => {
-    map.flyTo({ center: [11.5, 43.25], zoom: 8.3, pitch: 62, bearing: -18, duration: 1500 });
+    map.flyTo({ center: [11.5, 43.3], zoom: 8.5, pitch: 56, bearing: -18, duration: 1500 });
   });
 }
 
@@ -632,6 +673,29 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
 map.on('load', () => {
   // terrain is declared in the style; ensure it's active
   try { map.setTerrain({ source: 'terrain', exaggeration: 1.5 }); } catch (e) { /* older versions */ }
+
+  // --- 3D property beacons: extruded prisms that sit on the terrain ---
+  map.addSource('properties-3d', { type: 'geojson', data: propsToGeoJSON([]) });
+  map.addLayer({
+    id: 'property-3d',
+    type: 'fill-extrusion',
+    source: 'properties-3d',
+    paint: {
+      'fill-extrusion-color': [
+        'case', ['==', ['get', 'selected'], 1], '#ffd24a', ['get', 'color'],
+      ],
+      'fill-extrusion-height': ['get', 'height'],
+      'fill-extrusion-base': 0,
+      'fill-extrusion-opacity': 0.92,
+      'fill-extrusion-vertical-gradient': true,
+    },
+  });
+  // clicking a 3D beacon behaves like clicking its pin
+  map.on('click', 'property-3d', (e) => {
+    if (e.features && e.features[0]) selectProperty(e.features[0].properties.id, { fly: true });
+  });
+  map.on('mouseenter', 'property-3d', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'property-3d', () => { map.getCanvas().style.cursor = ''; });
 
   buildSidebar();
   buildMapControls();

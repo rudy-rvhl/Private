@@ -17,8 +17,10 @@ No build step, no API keys, no server required — **just open `index.html`.**
   Chianti ridgelines, the Val d'Orcia, Monte Amiata, the Apuan Alps — appear
   with their true inclines. An adjustable *relief exaggeration* and an optional
   *hillshade* layer make the topography even easier to read.
-- **Properties on the map.** Each listing is a colour-coded pin (by property
-  type) showing its price. Click it for a full info card.
+- **Properties on the map, in 3D.** Each listing is both a colour-coded price
+  pin *and* a 3D extruded beacon that stands on the terrain (coloured by type),
+  so properties read as objects in the landscape. Pins stay fully visible even
+  when they're behind a hill. Click a pin or a beacon for a full info card.
 - **See the view.** Every property has a *🔭 See the view* button. The camera
   flies to the property, tilts to eye level, and faces its best panoramic
   direction — so you literally see the landscape and outlook that property has.

@@ -246,7 +246,7 @@ input[type="range"] { width: 100%; accent-color: var(--accent); margin: 6px 0 2p
 .pop-type { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; opacity: .92; font-weight: 700; }
 .pop-title { font-size: 16px; font-weight: 800; margin: 3px 0 2px; line-height: 1.2; }
 .pop-loc { font-size: 12px; opacity: .92; }
-.pop-body { padding: 12px 14px; }
+.pop-body { padding: 12px 14px; max-height: 46vh; overflow-y: auto; }
 .pop-price { font-size: 20px; font-weight: 800; color: var(--accent); margin-bottom: 8px; }
 .pop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; font-size: 12.5px; margin-bottom: 10px; }
 .pop-grid .k { color: var(--muted); }
